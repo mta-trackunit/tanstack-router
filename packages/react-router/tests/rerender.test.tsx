@@ -15,6 +15,7 @@ import {
   Outlet,
   RouterProvider,
   createLink,
+  createMemoryHistory,
   createRootRoute,
   createRootRouteWithContext,
   createRoute,
@@ -29,55 +30,72 @@ import {
   useSearch,
 } from '../src'
 import { useDebugger } from '../src/debugger'
-
+import { flushPromisesInAct } from '../src/wait'
 
 describe('Rerender tests', () => {
   test('when using renderHook it returns a hook with same content to prove rerender works', async () => {
     const useIsFirstRender = () => {
-      useDebugger({});
-      const renderRef = React.useRef(true);
-    
+      useDebugger({})
+      const renderRef = React.useRef(true)
+
       if (renderRef.current === true) {
-        renderRef.current = false;
-        return {isFirst: true};
+        renderRef.current = false
+        return { isFirst: true }
       }
-    
-      return {isFirst: renderRef.current};
-    };
 
-    let childrenContainer = <></>;
-    
-    
-    const rootRoute = createRootRoute()
-    const indexRoute = createRoute({
-      getParentRoute: () => rootRoute,
-      path: '/',
-      component: () => childrenContainer,
-    })
-    const routeTree = rootRoute.addChildren([indexRoute])
-    
-    const router = createRouter({
-      routeTree: routeTree,
-    })
+      return { isFirst: renderRef.current }
+    }
+
     const RouterContainer = ({ children }: { children: React.ReactNode }) => {
-      if (React.isValidElement(children)) {
-        childrenContainer = children;
-      }
-      useDebugger({});
-      return <RouterProvider router={router} />;
-    };
+      const TestComponent = React.useMemo(() => () => {
+        useDebugger({}, "TestComponent")
+        return <>{children}</>
+      }, [children]);
 
-    const { result, rerender } = renderHook(
-      () => useIsFirstRender(),
-      { wrapper: RouterContainer },
-    )
-    console.log("calling rerender first time")
-    rerender();
+      const componentRef = React.useRef(TestComponent);
+      componentRef.current = TestComponent;
+
+      const routeTree = React.useMemo(() => {
+        const rootRoute = createRootRoute({
+          component: () =>componentRef.current()
+        })
+        return rootRoute
+      }, [])
+
+      const router = React.useMemo(
+        () =>
+          createRouter({
+            routeTree: routeTree,
+            history: createMemoryHistory({
+              initialEntries: [
+                '/',
+              ],
+            })
+          }),
+        [routeTree],
+      )
+      useDebugger({})
+      return <RouterProvider router={router}  />
+    }
+
+    const { result, rerender } = renderHook(() => useIsFirstRender(), {
+      wrapper: RouterContainer,
+    })
+    await flushPromisesInAct();
+    await flushPromisesInAct();
+    await flushPromisesInAct();
+    await flushPromisesInAct();
+    // wait 5 sec to make sure the rerender is not called
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    await flushPromisesInAct();
 
     expect(result.current).toBeTruthy()
     expect(result.current.isFirst).toBeTruthy()
-    console.log("calling rerender second time")
-    rerender();
+    console.log('calling rerender first time')
+    rerender()
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    await flushPromisesInAct();
+
     expect(result.current.isFirst).toBeFalsy()
   })
 })

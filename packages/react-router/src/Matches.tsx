@@ -25,13 +25,13 @@ import type {
   RouteIds,
   RoutePaths,
 } from './routeInfo'
-import { useDebugger } from './debugger'
 import type {
   Constrain,
   ControlledPromise,
   DeepPartial,
   NoInfer,
 } from './utils'
+import { useDebugger } from './debugger'
 
 export type AnyMatchAndValue = { match: any; value: any }
 
@@ -226,6 +226,8 @@ export function Matches() {
     </ResolvedSuspense>
   )
 
+  useDebugger({  })
+
   return router.options.InnerWrap ? (
     <router.options.InnerWrap>{inner}</router.options.InnerWrap>
   ) : (
@@ -244,9 +246,7 @@ function MatchesInner() {
     select: (s) => s.loadedAt,
   })
   useDebugger({ matchId, resetKey })
-
-  return (
-    <matchContext.Provider value={matchId}>
+  return <matchContext.Provider value={matchId}>
       <CatchBoundary
         getResetKey={() => resetKey}
         errorComponent={ErrorComponent}
@@ -261,7 +261,7 @@ function MatchesInner() {
         {matchId ? <Match matchId={matchId} /> : null}
       </CatchBoundary>
     </matchContext.Provider>
-  )
+  
 }
 
 export interface MatchRouteOptions {

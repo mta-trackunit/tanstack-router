@@ -17,7 +17,7 @@ import { rootRouteId } from './root'
 import type { AnyRoute } from './route'
 import { useDebugger } from './debugger'
 
-export const Match = React.memo(function MatchImpl({
+export const Match = function MatchImpl({
   matchId,
 }: {
   matchId: string
@@ -32,41 +32,64 @@ export const Match = React.memo(function MatchImpl({
     `Could not find routeId for matchId "${matchId}". Please file an issue!`,
   )
 
-  const route: AnyRoute = router.routesById[routeId]
+  const route = React.useMemo(
+    () => router.routesById[routeId],
+    [router.routesById, routeId]
+  )
 
-  const PendingComponent =
-    route.options.pendingComponent ?? router.options.defaultPendingComponent
+  const {
+    PendingComponent,
+    routeErrorComponent,
+    routeOnCatch,
+    routeNotFoundComponent,
+  } = React.useMemo(
+    () => ({
+      PendingComponent: route.options.pendingComponent ?? router.options.defaultPendingComponent,
+      routeErrorComponent: route.options.errorComponent ?? router.options.defaultErrorComponent,
+      routeOnCatch: route.options.onCatch ?? router.options.defaultOnCatch,
+      routeNotFoundComponent: route.isRoot
+        ? (route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component)
+        : route.options.notFoundComponent,
+    }),
+    [route.options, router.options, route.isRoot]
+  )
 
-  const pendingElement = PendingComponent ? <PendingComponent /> : null
+  const pendingElement = React.useMemo(
+    () => PendingComponent ? <PendingComponent /> : null,
+    [PendingComponent]
+  )
 
-  const routeErrorComponent =
-    route.options.errorComponent ?? router.options.defaultErrorComponent
   useDebugger({ route, PendingComponent })
 
-  const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch
-
-  const routeNotFoundComponent = route.isRoot
-    ? // If it's the root route, use the globalNotFound option, with fallback to the notFoundRoute's component
-      (route.options.notFoundComponent ??
-      router.options.notFoundRoute?.options.component)
-    : route.options.notFoundComponent
-
-  const ResolvedSuspenseBoundary =
-    // If we're on the root route, allow forcefully wrapping in suspense
-    (!route.isRoot || route.options.wrapInSuspense) &&
-    (route.options.wrapInSuspense ??
-      PendingComponent ??
-      (route.options.errorComponent as any)?.preload)
-      ? React.Suspense
-      : SafeFragment
-
-  const ResolvedCatchBoundary = routeErrorComponent
-    ? CatchBoundary
-    : SafeFragment
-
-  const ResolvedNotFoundBoundary = routeNotFoundComponent
-    ? CatchNotFound
-    : SafeFragment
+  const {
+    ResolvedSuspenseBoundary,
+    ResolvedCatchBoundary,
+    ResolvedNotFoundBoundary,
+  } = React.useMemo(
+    () => ({
+      ResolvedSuspenseBoundary:
+        (!route.isRoot || route.options.wrapInSuspense) &&
+        (route.options.wrapInSuspense ??
+          PendingComponent ??
+          (route.options.errorComponent as any)?.preload)
+          ? React.Suspense
+          : SafeFragment,
+      ResolvedCatchBoundary: routeErrorComponent
+        ? CatchBoundary
+        : SafeFragment,
+      ResolvedNotFoundBoundary: routeNotFoundComponent
+        ? CatchNotFound
+        : SafeFragment,
+    }),
+    [
+      route.isRoot,
+      route.options.wrapInSuspense,
+      PendingComponent,
+      route.options.errorComponent,
+      routeErrorComponent,
+      routeNotFoundComponent,
+    ]
+  )
 
   const resetKey = useRouterState({
     select: (s) => s.loadedAt,
@@ -105,9 +128,9 @@ export const Match = React.memo(function MatchImpl({
       </ResolvedSuspenseBoundary>
     </matchContext.Provider>
   )
-})
+}
 
-export const MatchInner = React.memo(function MatchInnerImpl({
+export const MatchInner = function MatchInnerImpl({
   matchId,
 }: {
   matchId: string
@@ -128,12 +151,10 @@ export const MatchInner = React.memo(function MatchInnerImpl({
     structuralSharing: true as any,
   })
 
-  const route = router.routesById[routeId]!
+  const route = React.useMemo(() => router.routesById[routeId]!, [routeId, router.routesById])
 
-  const out = React.useMemo(() => {
-    const Comp = route.options.component ?? router.options.defaultComponent
-    return Comp ? <Comp /> : <Outlet />
-  }, [route.options.component, router.options.defaultComponent])
+  const Comp = React.useMemo(() => route.options.component ?? router.options.defaultComponent, [route.options.component, router.options.defaultComponent])
+  
 
   // function useChangedDiff(value: any) {
   //   const ref = React.useRef(value)
@@ -154,9 +175,10 @@ export const MatchInner = React.memo(function MatchInnerImpl({
 
   // useChangedDiff(match)
 
-  const RouteErrorComponent =
-    (route.options.errorComponent ?? router.options.defaultErrorComponent) ||
-    ErrorComponent
+  const RouteErrorComponent = React.useMemo(
+    () => route.options.errorComponent ?? router.options.defaultErrorComponent ?? ErrorComponent,
+    [route.options.errorComponent, router.options.defaultErrorComponent]
+  )
 
   if (match.status === 'notFound') {
     let error: unknown
@@ -245,13 +267,13 @@ export const MatchInner = React.memo(function MatchInnerImpl({
 
   return (
     <>
-      {out}
+      {Comp ? <Comp /> : <Outlet />}
       {router.AfterEachMatch ? (
         <router.AfterEachMatch match={match} matchIndex={matchIndex} />
       ) : null}
     </>
   )
-})
+}
 
 export const Outlet = React.memo(function OutletImpl() {
   const router = useRouter()
@@ -260,6 +282,7 @@ export const Outlet = React.memo(function OutletImpl() {
     select: (s) => s.matches.find((d) => d.id === matchId)?.routeId as string,
   })
 
+  useDebugger({ matchId, routeId })
   const route = router.routesById[routeId]!
 
   const parentGlobalNotFound = useRouterState({
@@ -282,6 +305,21 @@ export const Outlet = React.memo(function OutletImpl() {
     },
   })
 
+  useDebugger({ parentGlobalNotFound, childMatchId })
+
+  // Memoize the nextMatch element
+  const nextMatch = React.useMemo(
+    () => childMatchId ? <Match matchId={childMatchId} /> : null,
+    [childMatchId]
+  )
+
+  const pendingElement = React.useMemo(
+    () => router.options.defaultPendingComponent ? (
+      <router.options.defaultPendingComponent />
+    ) : null,
+    [router]
+  )
+
   if (parentGlobalNotFound) {
     return renderRouteNotFound(router, route, undefined)
   }
@@ -289,12 +327,6 @@ export const Outlet = React.memo(function OutletImpl() {
   if (!childMatchId) {
     return null
   }
-
-  const nextMatch = <Match matchId={childMatchId} />
-
-  const pendingElement = router.options.defaultPendingComponent ? (
-    <router.options.defaultPendingComponent />
-  ) : null
 
   if (matchId === rootRouteId) {
     return (

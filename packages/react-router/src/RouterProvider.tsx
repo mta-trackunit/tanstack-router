@@ -65,27 +65,29 @@ export function RouterContextProvider<
 }: RouterProps<TRouter, TDehydrated> & {
   children: React.ReactNode
 }) {
-
-  useDebugger({  })
-  // Allow the router to update options on the router instance
-  router.update({
-    ...router.options,
-    ...rest,
-    context: {
-      ...router.options.context,
-      ...rest.context,
-    },
-  } as any)
+  React.useEffect(() => {
+    router.update({
+      ...router.options,
+      ...rest,
+      context: {
+        ...router.options.context,
+        ...rest.context,
+      },
+    } as any)
+  }, [router, rest])
 
   const routerContext = getRouterContext()
 
-  const provider = (
-    <routerContext.Provider value={router}>{children}</routerContext.Provider>
-  )
+  const provider = React.useMemo(() => {
+    if (router.options.Wrap) {
+      return <router.options.Wrap>{provider}</router.options.Wrap>
+    }
+    return (
+      <routerContext.Provider value={router}>{children}</routerContext.Provider>
+    )
+  }, [router, children, routerContext])
 
-  if (router.options.Wrap) {
-    return <router.options.Wrap>{provider}</router.options.Wrap>
-  }
+  useDebugger({})
 
   return provider
 }
